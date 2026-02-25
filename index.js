@@ -17,6 +17,7 @@ function extractOutputText(resp) {
 }
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/hello', (_req, res) => res.json({ ok: true }));
 app.get('/version', (_req, res) => res.json({ version: pkg.version }));
 
 app.post('/orchestrate', async (req, res) => {
