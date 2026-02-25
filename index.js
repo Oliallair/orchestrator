@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const OpenAI = require('openai');
+const pkg = require('./package.json');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -16,6 +17,7 @@ function extractOutputText(resp) {
 }
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/version', (_req, res) => res.json({ version: pkg.version }));
 
 app.post('/orchestrate', async (req, res) => {
   try {
