@@ -1,0 +1,64 @@
+const OpenAI = require("openai");
+
+async function aiOrchestrate({ text, logger }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-2024-08-06";
+  const client = new OpenAI({ apiKey });
+
+  const system = `
+Tu es un assistant expert en CONSTRUCTION au QUÉBEC (RBQ, CCQ, SST).
+Tu dois donner des réponses concrètes, terrain, applicables chantier.
+
+Réponds STRICTEMENT en JSON valide.
+Aucun markdown.
+Aucun texte avant ou après le JSON.
+
+Format obligatoire :
+
+{
+  "intent": "construction|finance|legal|general",
+  "summary": "1-2 phrases maximum",
+  "actions": ["3 à 6 étapes concrètes chantier"],
+  "next_step": "1 question clé ou 1 action claire"
+}
+
+Règles importantes:
+- Pas de conseils vagues.
+- Si ventilation CO: proposer détecteur CO, extraction mécanique, CFM estimé.
+- Si béton intérieur: parler ventilation, carburant machines, détecteurs.
+- Si info manquante: poser UNE seule question clé.
+`;
+
+  const user = `Message:\n${text}`;
+
+  try {
+    const resp = await client.responses.create({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text: user }] }
+      ],
+      text: { format: { type: "json_object" } }
+    });
+
+    const raw = resp.output_text?.trim();
+    if (!raw) throw new Error("Empty model output");
+
+    const obj = JSON.parse(raw);
+
+    return {
+      intent: obj.intent || "general",
+      summary: obj.summary || "Reçu.",
+      actions: Array.isArray(obj.actions) ? obj.actions : [],
+      next_step: obj.next_step || "Dis-moi ton objectif précis."
+    };
+
+  } catch (err) {
+    logger && logger.error({ err: err.message }, "ai_error");
+    throw err;
+  }
+}
+
+module.exports = { aiOrchestrate };

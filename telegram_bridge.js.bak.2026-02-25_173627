@@ -1,0 +1,65 @@
+require("dotenv").config({ path: "/opt/orchestrator/.env", override: true });
+
+// Disable any proxy env (common cause of Telegram 401 in node-telegram-bot-api)
+delete process.env.HTTP_PROXY;
+delete process.env.http_proxy;
+delete process.env.HTTPS_PROXY;
+delete process.env.https_proxy;
+delete process.env.ALL_PROXY;
+delete process.env.all_proxy;
+process.env.NO_PROXY = "api.telegram.org,localhost,127.0.0.1";
+process.env.no_proxy = process.env.NO_PROXY;
+
+const TelegramBot = require('node-telegram-bot-api');
+
+const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+console.log("TELEGRAM_BOT_TOKEN_len=", token.length);
+if (!token) {
+  console.error("Missing TELEGRAM_BOT_TOKEN");
+  process.exit(1);
+}
+
+const bot = new TelegramBot(token, { polling: true, request: { proxy: null } });
+
+function formatResponse(jsonText) {
+  try {
+    const data = JSON.parse(jsonText);
+
+    return `
+📌 ${(data.intent || "general").toUpperCase()}
+
+${data.summary || ""}
+
+Actions :
+${(data.actions || []).map(a => "- " + a).join("\n")}
+
+Prochaine étape :
+${data.next_step || ""}
+`;
+  } catch {
+    return jsonText;
+  }
+}
+
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const text = String(msg.text || '').trim();
+  if (!text) return;
+
+  try {
+    const r = await fetch('http://127.0.0.1:3000/orchestrate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+
+    const out = await r.text();
+    const formatted = formatResponse(out);
+
+    await bot.sendMessage(chatId, formatted);
+  } catch (e) {
+    await bot.sendMessage(chatId, "Erreur bot.");
+  }
+});
+
+console.log("telegram_bridge_started");

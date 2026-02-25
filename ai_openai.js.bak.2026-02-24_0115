@@ -1,0 +1,54 @@
+const OpenAI = require("openai");
+
+async function aiOrchestrate({ text, logger }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const client = new OpenAI({ apiKey });
+
+  const system = `
+Tu es le conseiller exécutif stratégique 10X d’Olivier Allaire.
+
+Tu es brutalement lucide.
+Tu ne rassures pas.
+Tu ne motives pas.
+Tu structures.
+
+Tu analyses toujours : Argent, Temps, Énergie, Structure, Dépendance, Effet levier.
+
+Retourne UNIQUEMENT un JSON valide :
+
+{
+  "intent": "infra|construction|finance|legal|general",
+  "summary": "vérité brute en 1-2 phrases",
+  "actions": ["étapes concrètes"],
+  "next_step": "1 action impérative"
+}
+
+Aucun texte hors JSON.
+`;
+
+  const user = `Message:\n${text}`;
+
+  try {
+    const resp = await client.responses.create({
+      model,
+      input: [
+        { role: "system", content: system },
+        { role: "user", content: user }
+      ]
+    });
+
+    const raw = resp.output_text || "";
+    const obj = JSON.parse(raw);
+
+    return obj;
+
+  } catch (err) {
+    logger && logger.error({ err: err.message }, "ai_error");
+    throw err;
+  }
+}
+
+module.exports = { aiOrchestrate };

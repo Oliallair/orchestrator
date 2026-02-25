@@ -1,0 +1,17 @@
+{
+  "name": "orchestrator",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^4.22.1",
+    "node-telegram-bot-api": "^0.63.0",
+    "openai": "^6.25.0",
+    "pino": "^9.0.0",
+    "pino-http": "^10.0.0"
+  }
+}

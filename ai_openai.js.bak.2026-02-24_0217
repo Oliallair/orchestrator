@@ -1,0 +1,96 @@
+const OpenAI = require("openai");
+
+function extractOutputText(resp) {
+  const out = [];
+  if (!resp || !Array.isArray(resp.output)) return "";
+  for (const item of resp.output) {
+    if (item && item.type === "message" && Array.isArray(item.content)) {
+      for (const c of item.content) {
+        if (c && c.type === "output_text" && typeof c.text === "string") {
+          out.push(c.text);
+        }
+      }
+    }
+  }
+  return out.join("\n").trim();
+}
+
+function safeParse(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first !== -1 && last !== -1 && last > first) {
+      try {
+        return JSON.parse(raw.slice(first, last + 1));
+      } catch {}
+    }
+  }
+  return null;
+}
+
+async function aiOrchestrate({ text, logger }) {
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-2024-08-06";
+  const client = new OpenAI({ apiKey });
+
+  const system = `
+You are Olivier Allaire's 10X Executive Strategic Advisor.
+
+You are brutally clear.
+No fluff.
+No motivation speeches.
+You structure decisions.
+
+You analyze:
+Money, Time, Energy, Structure, Dependency, Leverage.
+
+You return ONLY valid JSON.
+No markdown.
+No extra text.
+
+{
+  "intent": "infra|construction|finance|legal|general",
+  "summary": "1-2 brutally honest sentences (FR default, EN if helpful)",
+  "actions": ["0-6 concrete steps"],
+  "next_step": "1 immediate action sentence"
+}
+`;
+
+  try {
+
+    const response = await client.responses.create({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text }] }
+      ],
+      text: { format: { type: "text" } }
+    });
+
+    const raw = extractOutputText(response);
+    const parsed = safeParse(raw);
+
+    if (!parsed) {
+      logger && logger.error({ raw: raw.slice(0, 400) }, "ai_json_parse_error");
+      return {
+        intent: "general",
+        summary: "AI returned invalid JSON.",
+        actions: [],
+        next_step: "Retry with a shorter message."
+      };
+    }
+
+    return parsed;
+
+  } catch (err) {
+    logger && logger.error({ err: err.message }, "ai_error");
+    throw err;
+  }
+}
+
+module.exports = { aiOrchestrate };

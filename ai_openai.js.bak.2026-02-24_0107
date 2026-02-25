@@ -1,0 +1,75 @@
+const OpenAI = require("openai");
+
+function extractOutputText(resp) {
+  const out = [];
+  if (!resp || !Array.isArray(resp.output)) return "";
+  for (const item of resp.output) {
+    if (item && item.type === "message" && Array.isArray(item.content)) {
+      for (const c of item.content) {
+        if (c && c.type === "output_text" && typeof c.text === "string") out.push(c.text);
+      }
+    }
+  }
+  return out.join("\n").trim();
+}
+
+async function aiOrchestrate({ text, logger }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const client = new OpenAI({ apiKey });
+
+  const system = [
+    "Tu es le conseiller exécutif stratégique 10X d’Olivier Allaire.",
+    "Tu es brutalement lucide. Tu ne rassures pas. Tu ne motives pas. Tu structures.",
+    "",
+    "Tu analyses toujours: Argent, Temps, Énergie, Structure, Dépendance à Olivier, Effet levier.",
+    "Tu détectes: Ego, Peur, Sauveur, Contrôle inutile, Fatigue décisionnelle.",
+    "Tu refuses: réponses molles, généralisations, conseils vagues.",
+    "",
+    "Retourne UNIQUEMENT un JSON valide (pas de markdown, pas de texte autour).",
+    'Schema JSON: {"intent":"infra|construction|finance|legal|general","summary":"string","actions":["string"],"next_step":"string"}',
+    "Règles:",
+    "- summary: 1-2 phrases max, vérité brute.",
+    "- actions: 0 à 6 actions concrètes, impératives, courtes.",
+    "- next_step: 1 seule phrase, action immédiate."
+  ].join("\n");
+
+  const user = `Message:\n${text}`;
+
+  try {
+    const resp = await client.responses.create({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text: user }] }
+      ],
+      text: { format: { type: "text" } }
+    });
+
+    const raw = extractOutputText(resp);
+    if (!raw) throw new Error("Empty model output");
+
+    let obj;
+    try {
+      obj = JSON.parse(raw);
+    } catch (e) {
+      const snippet = raw.slice(0, 400);
+      throw new Error(`JSON parse failed. First 400 chars: ${snippet}`);
+    }
+
+    if (!obj || typeof obj !== "object") throw new Error("Invalid JSON object");
+    if (!obj.intent) obj.intent = "general";
+    if (!obj.summary) obj.summary = "Reçu.";
+    if (!Array.isArray(obj.actions)) obj.actions = [];
+    if (!obj.next_step) obj.next_step = "Donne-moi 3 faits (chiffres/contraintes) et je tranche.";
+
+    return obj;
+  } catch (err) {
+    logger && logger.error({ err: err.message }, "ai_error");
+    throw err;
+  }
+}
+
+module.exports = { aiOrchestrate };

@@ -1,0 +1,79 @@
+const OpenAI = require("openai");
+
+function extractOutputText(resp) {
+  // Compatible extraction: scan output message items and join output_text blocks
+  const out = [];
+  if (!resp || !Array.isArray(resp.output)) return "";
+  for (const item of resp.output) {
+    if (item && item.type === "message" && Array.isArray(item.content)) {
+      for (const c of item.content) {
+        if (c && c.type === "output_text" && typeof c.text === "string") out.push(c.text);
+      }
+    }
+  }
+  return out.join("\n").trim();
+}
+
+async function aiOrchestrate({ text, logger }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-2024-08-06";
+  const client = new OpenAI({ apiKey });
+
+  const system = [
+    "You are 'CQ Orchestrator' for a Quebec construction assistant.",
+    "Return ONLY valid JSON (no markdown, no extra text).",
+    "Schema:",
+    "{",
+    '  "intent": "infra|construction|finance|legal|general",',
+    '  "summary": "string",',
+    '  "actions": ["string", "..."],',
+    '  "next_step": "string"',
+    "}",
+    "Rules:",
+    "- actions: 0 to 6 concise steps",
+    "- next_step: exactly 1 short sentence"
+  ].join("\n");
+
+  const user = `Message:\n${text}`;
+
+  try {
+    const resp = await client.responses.create({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text: user }] }
+      ],
+      // IMPORTANT: Responses API uses text.format (not response_format)
+      text: { format: { type: "text" } }
+    });
+
+    const raw = extractOutputText(resp);
+    if (!raw) throw new Error("Empty model output");
+
+    // Expect JSON only
+    let obj;
+    try {
+      obj = JSON.parse(raw);
+    } catch (e) {
+      // log raw for debugging (truncated)
+      const snippet = raw.slice(0, 400);
+      throw new Error(`JSON parse failed. First 400 chars: ${snippet}`);
+    }
+
+    // minimal validation
+    if (!obj || typeof obj !== "object") throw new Error("Invalid JSON object");
+    if (!obj.intent) obj.intent = "general";
+    if (!obj.summary) obj.summary = "Reçu.";
+    if (!Array.isArray(obj.actions)) obj.actions = [];
+    if (!obj.next_step) obj.next_step = "Dis-moi ton objectif et je déroule le plan.";
+
+    return obj;
+  } catch (err) {
+    logger && logger.error({ err: err.message }, "ai_error");
+    throw err;
+  }
+}
+
+module.exports = { aiOrchestrate };

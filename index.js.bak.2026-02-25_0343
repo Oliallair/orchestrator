@@ -1,0 +1,106 @@
+const OpenAI = require("openai");
+
+function extractOutputText(resp) {
+  const out = [];
+  if (!resp || !Array.isArray(resp.output)) return "";
+  for (const item of resp.output) {
+    if (item && item.type === "message" && Array.isArray(item.content)) {
+      for (const c of item.content) {
+        if (c && c.type === "output_text" && typeof c.text === "string") {
+          out.push(c.text);
+        }
+      }
+    }
+  }
+  return out.join("\n").trim();
+}
+
+function safeJsonParse(raw) {
+  // Try direct parse
+  try {
+    return JSON.parse(raw);
+  } catch (_) {}
+
+  // Try extracting JSON object from messy output
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    const sliced = raw.slice(start, end + 1);
+    try {
+      return JSON.parse(sliced);
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function aiOrchestrate({ text, logger }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY missing");
+
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const client = new OpenAI({ apiKey });
+
+  const system = [
+    "You are Olivier Allaire’s 10X Executive Strategic Advisor (Québec construction + concrete + developer-side leadership + business ops + investing/crypto).",
+    "You are brutally lucid: no fluff, no motivational talk. You structure decisions and execution.",
+    "",
+    "NON-NEGOTIABLES:",
+    "- Detect ego/fear/savior/control/fatigue and name it directly when present.",
+    "- Always think in leverage and system design: reduce dependency on Olivier.",
+    "- Always evaluate: Money, Time, Energy, Structure, Dependency, Real leverage.",
+    "",
+    "YOU MUST RETURN ONLY VALID JSON. No markdown. No extra text. No code fences.",
+    "Strict schema:",
+    '{ "intent":"infra|construction|finance|legal|general", "summary":"string", "actions":["string"], "next_step":"string" }',
+    "",
+    "RULES:",
+    "- summary: 1-2 short sentences, blunt truth.",
+    "- actions: 0-6 concrete steps. Use measurable language (hours/$/risks/sequence) when relevant.",
+    "- next_step: exactly 1 imperative sentence.",
+    "- Provide BOTH French + simple English inside the strings when useful (Olivier struggles verbally in English). Keep English very simple.",
+  ].join("\n");
+
+  const user = `Message:\n${String(text || "").trim()}`;
+
+  try {
+    const resp = await client.responses.create({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text: user }] }
+      ],
+      text: { format: { type: "text" } }
+    });
+
+    const raw = extractOutputText(resp);
+    if (!raw) throw new Error("Empty model output");
+
+    const obj = safeJsonParse(raw);
+    if (!obj || typeof obj !== "object") {
+      const snippet = raw.slice(0, 400);
+      throw new Error(`JSON parse failed. First 400 chars: ${snippet}`);
+    }
+
+    // Normalize
+    if (!obj.intent) obj.intent = "general";
+    if (!obj.summary) obj.summary = "Reçu.";
+    if (!Array.isArray(obj.actions)) obj.actions = [];
+    if (!obj.next_step) obj.next_step = "Dis-moi ton objectif et je tranche.";
+
+    // Hard limits
+    if (obj.actions.length > 6) obj.actions = obj.actions.slice(0, 6);
+
+    // Ensure strings
+    obj.intent = String(obj.intent);
+    obj.summary = String(obj.summary);
+    obj.actions = obj.actions.map((x) => String(x));
+    obj.next_step = String(obj.next_step);
+
+    return obj;
+  } catch (err) {
+    if (logger) logger.error({ err: err.message }, "ai_error");
+    throw err;
+  }
+}
+
+module.exports = { aiOrchestrate };

@@ -1,0 +1,45 @@
+const TelegramBot = require("node-telegram-bot-api");
+
+function parseAllowedChatIds() {
+  const raw = (process.env.TELEGRAM_ALLOWED_CHAT_IDS || "").trim();
+  if (!raw) return null; // null = allow all (for now)
+  return new Set(raw.split(",").map(s => s.trim()).filter(Boolean));
+}
+
+async function startTelegramBridge({ onText, logger }) {
+  const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (!token || token === "COLLE_ICI") {
+    logger && logger.warn("TELEGRAM_BOT_TOKEN not set; telegram disabled");
+    return null;
+  }
+
+  // Ensure webhook is not set (we use polling)
+  // If another instance is polling, Telegram will throw 409 Conflict.
+  const bot = new TelegramBot(token, { polling: true });
+
+  const allowed = parseAllowedChatIds();
+
+  bot.on("message", async (msg) => {
+    try {
+      const chatId = String(msg.chat.id);
+      if (allowed && !allowed.has(chatId)) return;
+
+      const text = (msg.text || "").trim();
+      if (!text) return;
+
+      const reply = await onText({ text, chatId, msg });
+      if (reply) await bot.sendMessage(msg.chat.id, reply);
+    } catch (err) {
+      logger && logger.error({ err: err.message }, "telegram_message_error");
+    }
+  });
+
+  bot.on("polling_error", (err) => {
+    logger && logger.error({ err: err.message }, "polling_error");
+  });
+
+  logger && logger.info("telegram_bridge_started");
+  return bot;
+}
+
+module.exports = { startTelegramBridge };
