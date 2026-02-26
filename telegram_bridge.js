@@ -1,9 +1,23 @@
 "use strict";
 
-require("dotenv").config({ path: "/opt/orchestrator/.env", override: true });
-
-const fs = require("fs");
 const path = require("path");
+const fs = require("fs");
+const dotenv = require("dotenv");
+
+const REPO_DIR = process.env.REPO_DIR || path.resolve(__dirname);
+
+const envPaths = [];
+if (process.env.DOTENV_PATH) envPaths.push(process.env.DOTENV_PATH);
+envPaths.push(path.join(__dirname, ".env"));
+envPaths.push(path.join(REPO_DIR, ".env"));
+
+const envPath = envPaths.find((p) => fs.existsSync(p));
+if (envPath) {
+  dotenv.config({ path: envPath, override: true });
+} else {
+  dotenv.config();
+}
+
 const crypto = require("crypto");
 
 const TelegramBot = require("node-telegram-bot-api");
@@ -18,8 +32,6 @@ if (!token) {
 
 // 🔒 Mets ton chat_id admin ici
 const ADMIN_CHAT_ID = 5233465884;
-
-const REPO_DIR = "/opt/orchestrator";
 const WORKSPACE_DIR = path.join(REPO_DIR, "workspace");
 
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
