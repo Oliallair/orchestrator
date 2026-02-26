@@ -365,16 +365,15 @@ bot.on("message", async (msg) => {
   if (chatId !== ADMIN_CHAT_ID) {
     return reply(chatId, "⛔ Accès refusé.");
   }
+
+  // ---------- Mode IA (texte sans /) ----------
   if (!text.startsWith("/")) {
     const last = lastMsgAtByChatId.get(chatId);
     if (last != null && Date.now() - last < 2000) {
       return reply(chatId, "⏳ Attends 2 secondes");
     }
     lastMsgAtByChatId.set(chatId, Date.now());
-  }
 
-  // ---------- Mode IA (texte sans /) ----------
-  if (!text.startsWith("/")) {
     const shortGreetings = ["hello", "salut", "allo", "yo", "test", "ok", "hey"];
     if (shortGreetings.includes(text.toLowerCase()) || text.length < 5) {
       return reply(
