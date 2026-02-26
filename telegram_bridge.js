@@ -23,7 +23,7 @@ const crypto = require("crypto");
 const TelegramBot = require("node-telegram-bot-api");
 const OpenAI = require("openai");
 const { runCommand } = require("./src/executor");
-const { aiOrchestrate } = require("./src/ai");
+const { aiOrchestrate } = require(path.join(__dirname, "src", "ai"));
 
 const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 if (!token) {
