@@ -23,6 +23,7 @@ const crypto = require("crypto");
 const TelegramBot = require("node-telegram-bot-api");
 const OpenAI = require("openai");
 const { runCommand } = require("./src/executor");
+const { aiOrchestrate } = require("./src/ai");
 
 const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
 if (!token) {
@@ -358,10 +359,32 @@ async function runPatchTests() {
 bot.on("message", async (msg) => {
   const chatId = msg.chat?.id;
   const text = typeof msg.text === "string" ? msg.text.trim() : "";
-  if (!chatId || !text) return;
+  if (!text) return;
+  if (!chatId) return;
 
   if (chatId !== ADMIN_CHAT_ID) {
     return reply(chatId, "⛔ Accès refusé.");
+  }
+
+  // ---------- Mode IA (texte sans /) ----------
+  if (!text.startsWith("/")) {
+    try {
+      const out = await aiOrchestrate({ text, logger: console });
+      const lines = [
+        "📌 " + (out.summary || "—"),
+        "",
+        "📋 Actions:",
+        ...(Array.isArray(out.actions) && out.actions.length ? out.actions.map((a) => "• " + a) : ["—"]),
+        "",
+        "➡️ " + (out.next_step || "—"),
+      ];
+      const formatted = lines.join("\n");
+      await reply(chatId, formatted.length > 4000 ? formatted.slice(0, 4000) + "\n…" : formatted);
+    } catch (err) {
+      console.error(err);
+      await reply(chatId, "❌ Désolé, une erreur s'est produite.");
+    }
+    return;
   }
 
   // ---------- /git ----------
