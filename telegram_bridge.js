@@ -40,6 +40,7 @@ const OPENAI_MODEL = (process.env.OPENAI_MODEL || "gpt-4.1-mini").trim();
 const ai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 const bot = new TelegramBot(token, { polling: true });
+const lastMsgAtByChatId = new Map();
 
 // ---------------- helpers ----------------
 function ensureDir(p) {
@@ -363,6 +364,13 @@ bot.on("message", async (msg) => {
   if (!chatId) return;
   if (chatId !== ADMIN_CHAT_ID) {
     return reply(chatId, "⛔ Accès refusé.");
+  }
+  if (!text.startsWith("/")) {
+    const last = lastMsgAtByChatId.get(chatId);
+    if (last != null && Date.now() - last < 2000) {
+      return reply(chatId, "⏳ Attends 2 secondes");
+    }
+    lastMsgAtByChatId.set(chatId, Date.now());
   }
 
   // ---------- Mode IA (texte sans /) ----------
