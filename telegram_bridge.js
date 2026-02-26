@@ -193,7 +193,7 @@ async function buildPatchFromAI(instruction) {
   if (!ai) throw new Error("OPENAI_API_KEY missing in .env (required for /patch)");
 
   // 👉 Pour commencer: on autorise seulement index.js (c’est la bonne pratique)
-  const allowedFiles = ["index.js"];
+  const allowedFiles = ["index.js","telegram_bridge.js"];
 
   const fileContext = `FILE: index.js\n-----\n${readText("index.js")}\n-----\n`;
 

@@ -18,3 +18,8 @@ workspace/
 
 # temp patches
 workspace/
+
+# backups
+*.bak
+*.bak.*
+*.backup
