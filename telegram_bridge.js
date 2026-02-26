@@ -58,11 +58,11 @@ async function reply(chatId, text) {
   return bot.sendMessage(chatId, msg.slice(0, 3900) || "—");
 }
 
-function clamp(s, n) {
-  const t = String(s || "");
-  return t.length > n ? t.slice(0, n) + "\n…(truncated)…" : t;
+function clamp(value, maxLength) {
+  const str = String(value ?? "");
+  if (str.length <= maxLength) return str;
+  return str.slice(0, maxLength - 1) + "…";
 }
-const truncate = (s, n) => (String(s || "").length > n ? String(s || "").slice(0, n - 1) + "…" : String(s || ""));
 
 function safeRelPath(p) {
   const cleaned = String(p || "").replace(/^(\.\/)+/, "").trim();
@@ -468,8 +468,8 @@ bot.on("message", async (msg) => {
     }
     const X = ctx.userMessages.length;
     const Y = ctx.botReplies.length;
-    const lastTwoUser = ctx.userMessages.slice(-2).map((m) => truncate(m, 120)).join("\n");
-    const lastBot = ctx.botReplies.length ? truncate(ctx.botReplies[ctx.botReplies.length - 1], 200) : "—";
+    const lastTwoUser = ctx.userMessages.slice(-2).map((m) => clamp(m, 120)).join("\n");
+    const lastBot = ctx.botReplies.length ? clamp(ctx.botReplies[ctx.botReplies.length - 1], 200) : "—";
     const lines = [
       `User msgs: ${X}/10`,
       `Bot replies: ${Y}/5`,
