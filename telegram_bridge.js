@@ -361,9 +361,19 @@ bot.on("message", async (msg) => {
   const text = typeof msg.text === "string" ? msg.text.trim() : "";
   if (!text) return;
   if (!chatId) return;
+  if (chatId !== ADMIN_CHAT_ID) {
+    return reply(chatId, "⛔ Accès refusé.");
+  }
 
   // ---------- Mode IA (texte sans /) ----------
   if (!text.startsWith("/")) {
+    const shortGreetings = ["hello", "salut", "allo", "yo", "test", "ok", "hey"];
+    if (shortGreetings.includes(text.toLowerCase()) || text.length < 5) {
+      return reply(
+        chatId,
+        "👋 Salut! Dis-moi ce que tu veux faire:\n1) /git status\n2) /patch <instruction>\n3) Pose ta question (ex: 'résume ce log' ou 'quoi faire ensuite')"
+      );
+    }
     try {
       const out = await aiOrchestrate({ text, logger: console });
       const lines = [
@@ -381,10 +391,6 @@ bot.on("message", async (msg) => {
       await reply(chatId, "❌ Désolé, une erreur s'est produite.");
     }
     return;
-  }
-
-  if (chatId !== ADMIN_CHAT_ID) {
-    return reply(chatId, "⛔ Accès refusé.");
   }
 
   // ---------- /git ----------
