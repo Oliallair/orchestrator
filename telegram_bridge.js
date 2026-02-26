@@ -42,6 +42,7 @@ const ai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 const bot = new TelegramBot(token, { polling: true });
 const lastMsgAtByChatId = new Map();
 const contextByChatId = new Map();
+const ctxEnabledByChatId = new Map();
 
 // ---------------- helpers ----------------
 function ensureDir(p) {
@@ -379,20 +380,24 @@ bot.on("message", async (msg) => {
     if (shortGreetings.includes(text.toLowerCase()) || text.length < 5) {
       return reply(
         chatId,
-        "👋 Salut! Dis-moi ce que tu veux faire:\n1) /git status\n2) /patch <instruction>\n3) Pose ta question (ex: 'résume ce log' ou 'quoi faire ensuite')"
+        "👋 Salut! Donne-moi un objectif en 1 phrase (ex: \"résume ce log\", \"prochaine étape\", \"débug X\")."
       );
     }
+    const ctxOn = ctxEnabledByChatId.get(chatId) !== false;
     let ctx = contextByChatId.get(chatId);
-    if (!ctx) {
+    if (ctxOn && !ctx) {
       ctx = { userMessages: [], botReplies: [] };
       contextByChatId.set(chatId, ctx);
     }
-    const userLines = ctx.userMessages.slice(-10).map((m) => "User: " + m);
-    const botLines = ctx.botReplies.slice(-5).map((r) => "Bot: " + r);
-    const contextBlock = [].concat(userLines, botLines).filter(Boolean).join("\n");
-    const textWithContext = contextBlock
-      ? "[Contexte]\n" + contextBlock + "\n\n[Message actuel]\n" + text
-      : text;
+    let textWithContext = text;
+    if (ctxOn && ctx) {
+      const userLines = ctx.userMessages.slice(-10).map((m) => "User: " + m);
+      const botLines = ctx.botReplies.slice(-5).map((r) => "Bot: " + r);
+      const contextBlock = [].concat(userLines, botLines).filter(Boolean).join("\n");
+      textWithContext = contextBlock
+        ? "[Contexte]\n" + contextBlock + "\n\n[Message actuel]\n" + text
+        : text;
+    }
     try {
       const out = await aiOrchestrate({ text: textWithContext, logger: console });
       const lines = [
@@ -406,11 +411,13 @@ bot.on("message", async (msg) => {
       const formatted = lines.join("\n");
       const toSend = formatted.length > 4000 ? formatted.slice(0, 4000) + "\n…" : formatted;
       await reply(chatId, toSend);
-      ctx.userMessages.push(text);
-      ctx.userMessages = ctx.userMessages.slice(-10);
-      const toStore = toSend.slice(0, 800);
-      ctx.botReplies.push(toStore);
-      ctx.botReplies = ctx.botReplies.slice(-5);
+      if (ctxOn && ctx) {
+        ctx.userMessages.push(text);
+        ctx.userMessages = ctx.userMessages.slice(-10);
+        const toStore = toSend.slice(0, 800);
+        ctx.botReplies.push(toStore);
+        ctx.botReplies = ctx.botReplies.slice(-5);
+      }
     } catch (err) {
       console.error(err);
       await reply(chatId, "❌ Désolé, une erreur s'est produite.");
@@ -441,9 +448,38 @@ bot.on("message", async (msg) => {
     return reply(chatId, `✅ Commit OK\n\n${(r.stdout || "—").trim()}`);
   }
 
+  if (text === "/ctx on") {
+    ctxEnabledByChatId.set(chatId, true);
+    return reply(chatId, "✅");
+  }
+  if (text === "/ctx off") {
+    ctxEnabledByChatId.set(chatId, false);
+    return reply(chatId, "✅");
+  }
   if (text === "/ctx clear") {
     contextByChatId.set(chatId, { userMessages: [], botReplies: [] });
     return reply(chatId, "✅ Contexte vidé.");
+  }
+  if (text === "/ctx show") {
+    const ctx = contextByChatId.get(chatId) || { userMessages: [], botReplies: [] };
+    if (ctx.userMessages.length === 0 && ctx.botReplies.length === 0) {
+      return reply(chatId, "(vide)");
+    }
+    const X = ctx.userMessages.length;
+    const Y = ctx.botReplies.length;
+    const lastTwoUser = ctx.userMessages.slice(-2).map((m) => clamp(m, 120)).join("\n");
+    const lastBot = ctx.botReplies.length ? clamp(ctx.botReplies[ctx.botReplies.length - 1], 200) : "—";
+    const lines = [
+      `User msgs: ${X}/10`,
+      `Bot replies: ${Y}/5`,
+      "",
+      "Derniers user (2):",
+      lastTwoUser || "—",
+      "",
+      "Dernière réponse bot:",
+      lastBot,
+    ];
+    return reply(chatId, lines.join("\n"));
   }
 
   // ---------- /patch (FIXED ORDER) ----------
