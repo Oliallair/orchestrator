@@ -41,6 +41,7 @@ const ai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 const bot = new TelegramBot(token, { polling: true });
 const lastMsgAtByChatId = new Map();
+const contextByChatId = new Map();
 
 // ---------------- helpers ----------------
 function ensureDir(p) {
@@ -381,8 +382,19 @@ bot.on("message", async (msg) => {
         "👋 Salut! Dis-moi ce que tu veux faire:\n1) /git status\n2) /patch <instruction>\n3) Pose ta question (ex: 'résume ce log' ou 'quoi faire ensuite')"
       );
     }
+    let ctx = contextByChatId.get(chatId);
+    if (!ctx) {
+      ctx = { userMessages: [], botReplies: [] };
+      contextByChatId.set(chatId, ctx);
+    }
+    const userLines = ctx.userMessages.slice(-10).map((m) => "User: " + m);
+    const botLines = ctx.botReplies.slice(-5).map((r) => "Bot: " + r);
+    const contextBlock = [].concat(userLines, botLines).filter(Boolean).join("\n");
+    const textWithContext = contextBlock
+      ? "[Contexte]\n" + contextBlock + "\n\n[Message actuel]\n" + text
+      : text;
     try {
-      const out = await aiOrchestrate({ text, logger: console });
+      const out = await aiOrchestrate({ text: textWithContext, logger: console });
       const lines = [
         "📌 " + (out.summary || "—"),
         "",
@@ -392,7 +404,13 @@ bot.on("message", async (msg) => {
         "➡️ " + (out.next_step || "—"),
       ];
       const formatted = lines.join("\n");
-      await reply(chatId, formatted.length > 4000 ? formatted.slice(0, 4000) + "\n…" : formatted);
+      const toSend = formatted.length > 4000 ? formatted.slice(0, 4000) + "\n…" : formatted;
+      await reply(chatId, toSend);
+      ctx.userMessages.push(text);
+      ctx.userMessages = ctx.userMessages.slice(-10);
+      const toStore = toSend.slice(0, 800);
+      ctx.botReplies.push(toStore);
+      ctx.botReplies = ctx.botReplies.slice(-5);
     } catch (err) {
       console.error(err);
       await reply(chatId, "❌ Désolé, une erreur s'est produite.");
@@ -421,6 +439,11 @@ bot.on("message", async (msg) => {
     if (!r.ok) return reply(chatId, `❌ Commit failed (${r.step})\n\n${(r.stderr || "—").trim()}`);
 
     return reply(chatId, `✅ Commit OK\n\n${(r.stdout || "—").trim()}`);
+  }
+
+  if (text === "/ctx clear") {
+    contextByChatId.set(chatId, { userMessages: [], botReplies: [] });
+    return reply(chatId, "✅ Contexte vidé.");
   }
 
   // ---------- /patch (FIXED ORDER) ----------
