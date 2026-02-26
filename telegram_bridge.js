@@ -362,10 +362,6 @@ bot.on("message", async (msg) => {
   if (!text) return;
   if (!chatId) return;
 
-  if (chatId !== ADMIN_CHAT_ID) {
-    return reply(chatId, "⛔ Accès refusé.");
-  }
-
   // ---------- Mode IA (texte sans /) ----------
   if (!text.startsWith("/")) {
     try {
@@ -385,6 +381,10 @@ bot.on("message", async (msg) => {
       await reply(chatId, "❌ Désolé, une erreur s'est produite.");
     }
     return;
+  }
+
+  if (chatId !== ADMIN_CHAT_ID) {
+    return reply(chatId, "⛔ Accès refusé.");
   }
 
   // ---------- /git ----------
