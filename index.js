@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const OpenAI = require('openai');
 const pkg = require('./package.json');
+// Add telegram_bridge.js to whitelist for /patch commands
+const PATCH_WHITELIST = ['index.js', 'telegram_bridge.js'];
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));

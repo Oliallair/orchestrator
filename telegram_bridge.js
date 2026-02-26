@@ -324,14 +324,17 @@ async function runPatchTests() {
     });
   }
 
-  await run("curl /health", "bash", ["-lc", "curl -s http://127.0.0.1:3000/health"]);
-  await run("curl /version", "bash", ["-lc", "curl -s http://127.0.0.1:3000/version"]);
+  function curlRetryBash(curlCmd) {
+    return `for i in {1..6}; do ${curlCmd} && exit 0; sleep 1; done; exit 1`;
+  }
 
-  // ✅ NEW: /orchestrate test
+  await run("curl /health", "bash", ["-lc", curlRetryBash("curl -s http://127.0.0.1:3000/health")]);
+  await run("curl /version", "bash", ["-lc", curlRetryBash("curl -s http://127.0.0.1:3000/version")]);
+
   await run(
     "curl /orchestrate",
     "bash",
-    ["-lc", "curl -s -X POST http://127.0.0.1:3000/orchestrate -H 'Content-Type: application/json' -d '{\"text\":\"ping\"}'"]
+    ["-lc", curlRetryBash("curl -s -X POST http://127.0.0.1:3000/orchestrate -H 'Content-Type: application/json' -d '{\"text\":\"ping\"}'")]
   );
 
   await run("pm2 list", "pm2", ["list"]);
